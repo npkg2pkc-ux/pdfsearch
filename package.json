@@ -1,0 +1,20 @@
+{
+  "name": "pdf-tag-search",
+  "version": "1.0.0",
+  "description": "Aplikasi pencarian PDF berdasarkan tag/komentar/anotasi",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "sqlite3": "^5.1.7",
+    "cors": "^2.8.5",
+    "pdfjs-dist": "^4.0.379"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

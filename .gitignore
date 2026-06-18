@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Database & generated data
+db/data.db
+db/data.db-journal
+db/data.db-wal
+db/data.db-shm
+uploads/
+!uploads/.gitkeep
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Logs
+*.log
+server_stdout.log
+server_stderr.log
+
+# Vercel
+.vercel/
+
+# Public assets (PDF.js) — KEEP these, don't ignore
+!public/pdfjs/pdf.min.mjs
+!public/pdfjs/pdf.worker.min.mjs

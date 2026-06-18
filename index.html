@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Tag Search</title>
+  <link rel="stylesheet" href="styles.css" />
+  
+</head>
+<body>
+  <div id="offlineBanner" class="offline-banner hidden">
+    <span class="offline-icon">📂</span>
+    <span><b>Mode Offline</b> — buka langsung dari file. Fitur scan/search tidak aktif, tapi viewer PDF tetap bisa dipakai.</span>
+    <button id="offlineBannerClose" class="offline-banner-close" title="Sembunyikan">✕</button>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">📑</span>
+      <h1>PDF Tag Search</h1>
+    </div>
+    <div class="topbar-actions">
+      <button id="btnPickFolder" class="btn btn-secondary" title="Pilih folder PDF">
+        <span class="icon">📁</span> Pilih Folder
+      </button>
+      <span class="folder-info" id="folderInfo">Belum ada folder</span>
+      <button id="btnRescan" class="btn btn-secondary" title="Scan ulang folder" disabled>
+        <span class="icon">🔄</span> Scan Ulang
+      </button>
+      <button id="btnUpload" class="btn btn-primary" disabled>
+        <span class="icon">+</span> Upload PDF
+      </button>
+    </div>
+  </header>
+
+  <!-- Modal pilih folder -->
+  <div id="folderModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>📁 Pilih Folder PDF</h3>
+        <button id="btnCloseFolderModal" class="btn-close">✕</button>
+      </div>
+      <div class="folder-form">
+        <p class="folder-help">Masukkan path folder berisi file PDF. Contoh:</p>
+        <ul class="folder-examples">
+          <li><code>C:\Users\Nama\Documents\PDFs</code> (Windows)</li>
+          <li><code>D:\MyPDFs\Arsip</code> (Windows)</li>
+          <li><code>/home/user/pdfs</code> (Linux/Mac)</li>
+        </ul>
+        <label class="folder-input-label">
+          Path folder
+          <div class="folder-input-row">
+            <input
+              type="text"
+              id="folderInput"
+              placeholder="contoh: D:\MyPDFs"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button type="button" id="btnBrowseFolder" class="btn btn-secondary" title="Browse folder (untuk referensi)">
+              📂 Browse
+            </button>
+          </div>
+          <input type="file" id="folderBrowser" webkitdirectory directory multiple style="display:none" />
+        </label>
+        <div class="folder-preview" id="folderPreview"></div>
+        <div id="folderStatus" class="folder-status"></div>
+        <div class="modal-footer">
+          <button type="button" id="btnCancelFolder" class="btn btn-secondary">Batal</button>
+          <button type="button" id="btnSetFolder" class="btn btn-primary">Set Folder & Scan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>Daftar File</h2>
+        <span class="badge" id="fileCount">0</span>
+      </div>
+      <div id="fileList" class="file-list">
+        <div class="empty">Pilih folder PDF dulu untuk memulai.</div>
+      </div>
+    </aside>
+
+    <section class="content">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="Cari tag / komentar / anotasi..."
+          autocomplete="off"
+          disabled
+        />
+        <button id="btnClear" class="btn-clear" title="Hapus">✕</button>
+      </div>
+
+      <div id="searchStatus" class="search-status"></div>
+      <div id="results" class="results">
+        <div class="welcome">
+          <h2>👋 Selamat datang</h2>
+          <p>Klik <b>"Pilih Folder"</b> di kanan atas untuk memilih folder berisi file PDF.</p>
+          <p>Setelah folder dipilih, klik <b>"Scan Ulang"</b> untuk mengekstrak semua anotasi.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal: PDF Viewer -->
+  <div id="pdfModal" class="modal hidden pdf-modal">
+    <div class="pdf-modal-content">
+      <div class="pdf-modal-header">
+        <div class="pdf-modal-title">
+          <span class="file-icon">📄</span>
+          <span id="pdfModalTitle">File</span>
+        </div>
+        <div class="pdf-modal-actions">
+          <button id="pdfPrevPage" class="btn btn-secondary" title="Halaman sebelumnya">◀</button>
+          <span id="pdfPageInfo" class="pdf-page-info">1 / 1</span>
+          <button id="pdfNextPage" class="btn btn-secondary" title="Halaman berikutnya">▶</button>
+          <span class="pdf-divider"></span>
+          <button id="pdfZoomOut" class="btn btn-secondary" title="Zoom out">−</button>
+          <span id="pdfZoomLevel" class="pdf-zoom-level">100%</span>
+          <button id="pdfZoomIn" class="btn btn-secondary" title="Zoom in">+</button>
+          <span class="pdf-divider"></span>
+          <button id="pdfClose" class="btn-close" title="Tutup">✕</button>
+        </div>
+      </div>
+      <div class="pdf-modal-body">
+        <div class="pdf-viewer-wrap">
+          <div id="pdfCanvasWrap" class="pdf-canvas-wrap">
+            <canvas id="pdfCanvas"></canvas>
+            <div id="pdfAnnotLayer" class="pdf-annot-layer"></div>
+            <div id="pdfLoading" class="pdf-loading">Memuat PDF...</div>
+          </div>
+        </div>
+        <aside class="pdf-tags-panel">
+          <div class="pdf-tags-header">
+            <h3>🏷 Anotasi</h3>
+            <span class="badge" id="pdfTagCount">0</span>
+          </div>
+          <div id="pdfTagsList" class="pdf-tags-list">
+            <div class="empty">Tidak ada anotasi.</div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Upload -->
+  <div id="uploadModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Upload File PDF</h3>
+        <button id="btnCloseModal" class="btn-close">✕</button>
+      </div>
+      <form id="uploadForm" class="upload-form">
+        <label class="file-drop" for="fileInput">
+          <span class="file-drop-icon">📄</span>
+          <span class="file-drop-text">Klik atau drop file PDF di sini</span>
+          <span class="file-drop-sub" id="fileName">Belum ada file dipilih</span>
+          <input type="file" id="fileInput" name="pdf" accept="application/pdf,.pdf" required />
+        </label>
+        <div class="upload-progress hidden" id="uploadProgress">
+          <div class="upload-progress-bar" id="uploadProgressBar"></div>
+        </div>
+        <div id="uploadStatus" class="upload-status"></div>
+        <div class="modal-footer">
+          <button type="button" id="btnCancelUpload" class="btn btn-secondary">Batal</button>
+          <button type="submit" id="btnSubmitUpload" class="btn btn-primary">Upload</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Offline PDF Viewer (file:// mode) -->
+<div id="offlinePdfModal" class="modal hidden pdf-modal">
+  <div class="pdf-modal-content">
+    <div class="pdf-modal-header">
+      <div class="pdf-modal-title">
+        <span class="file-icon">📄</span>
+        <span id="offlinePdfTitle">File</span>
+      </div>
+      <div class="pdf-modal-actions">
+        <button id="offlinePdfPrev" class="btn btn-secondary" title="File sebelumnya">◀</button>
+        <span id="offlinePdfInfo" class="pdf-page-info">- / -</span>
+        <button id="offlinePdfNext" class="btn btn-secondary" title="File berikutnya">▶</button>
+        <span class="pdf-divider"></span>
+        <label class="btn btn-secondary" for="offlinePdfPick" title="Pilih file PDF lain" style="cursor:pointer;">
+          📂 Pilih File
+        </label>
+        <input type="file" id="offlinePdfPick" accept="application/pdf,.pdf" style="display:none;" />
+        <span class="pdf-divider"></span>
+        <button id="offlinePdfClose" class="btn-close" title="Tutup">✕</button>
+      </div>
+    </div>
+    <div class="pdf-modal-body offline-pdf-body">
+      <div class="pdf-viewer-wrap offline-pdf-wrap" id="offlinePdfDropZone">
+        <embed id="offlinePdfEmbed" type="application/pdf" src="" />
+        <div id="offlinePdfEmpty" class="pdf-loading">
+          <div style="text-align:center;">
+            <div style="font-size:48px;margin-bottom:12px;">📄</div>
+            <div>Drag-drop file PDF di sini, atau klik <b>Pilih File</b> di atas.</div>
+            <div style="margin-top:8px;font-size:12px;opacity:0.7;">Browser akan menampilkan viewer bawaan (Chrome/Edge/Firefox).</div>
+          </div>
+        </div>
+      </div>
+      <aside class="pdf-tags-panel">
+        <div class="pdf-tags-header">
+          <h3>📚 File</h3>
+          <span class="badge" id="offlinePdfCount">0</span>
+        </div>
+        <div id="offlineFileList" class="pdf-tags-list">
+          <div class="empty">Belum ada file. Drop PDF di area viewer.</div>
+        </div>
+        <div class="offline-hint">
+          💡 File dibaca langsung dari komputermu, tidak diupload kemana pun.
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
