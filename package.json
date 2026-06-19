@@ -2,7 +2,7 @@
   "name": "pdf-tag-search",
   "version": "1.0.0",
   "description": "Aplikasi pencarian PDF berdasarkan tag/komentar/anotasi",
-  "main": "server.js",
+  "main": "electron-main.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"
@@ -24,6 +24,27 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "worker": "node worker/processor.js"
+    "worker": "node worker/processor.js",
+    "electron": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.example.pdfsearch",
+    "productName": "PDF Tag Search",
+    "win": {
+      "target": ["nsis"]
+    },
+    "files": [
+      "**/*",
+      "!node_modules/*/{CHANGELOG.md,README.md,README,readme.md,test}" 
+    ],
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "devDependencies": {
+    "electron": "^26.0.0",
+    "electron-builder": "^24.0.0",
+    "node-fetch": "^3.4.0"
   }
 }
