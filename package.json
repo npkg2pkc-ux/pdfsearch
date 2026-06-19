@@ -12,9 +12,18 @@
     "multer": "^1.4.5-lts.1",
     "sqlite3": "^5.1.7",
     "cors": "^2.8.5",
-    "pdfjs-dist": "^4.0.379"
+    "pdfjs-dist": "^4.0.379",
+    "@aws-sdk/client-s3": "^3.500.0",
+    "pg": "^8.11.0",
+    "formidable": "^3.7.0"
   },
   "engines": {
     "node": ">=18.0.0"
+  }
+  ,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "worker": "node worker/processor.js"
   }
 }

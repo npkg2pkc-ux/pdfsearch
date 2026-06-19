@@ -5,7 +5,7 @@
 // Backend base URL: use localhost:3000 for local dev, otherwise default to current origin.
 // If you host the Express backend on a separate server, set `API_BASE_OVERRIDE` below
 // or replace this with the production backend URL.
-const API_BASE_OVERRIDE = null; // e.g. "https://api.mydomain.com" — set to non-null to force
+const API_BASE_OVERRIDE = (typeof window !== 'undefined' && window.__API_BASE_OVERRIDE__) ? window.__API_BASE_OVERRIDE__ : null; // override from /env.js
 const API_BASE = API_BASE_OVERRIDE
   || (location.hostname === "localhost" || location.hostname === "127.0.0.1"
     ? "http://localhost:3000"
@@ -37,8 +37,11 @@ async function ensurePdfjs() {
 async function apiFetch(path, options) {
   let res;
   try {
-    // If API_BASE points to same origin, fetch relative path to avoid CORS issues.
-    const url = API_BASE && API_BASE.indexOf(location.hostname) !== -1 ? path : `${API_BASE}${path}`;
+    // Build URL according to deployment:
+    // - If API_BASE points to same origin (e.g., Vercel), prefix same-origin API calls with `/api`.
+    // - Otherwise use the absolute `API_BASE`.
+    const sameOrigin = API_BASE && API_BASE.indexOf(location.hostname) !== -1;
+    const url = sameOrigin ? (path.startsWith("/api") ? path : `/api${path}`) : `${API_BASE}${path}`;
     res = await fetch(url, options);
   } catch (err) {
     throw new Error(
@@ -49,6 +52,12 @@ async function apiFetch(path, options) {
   return res;
 }
 
+// Helper untuk membangun URL (berguna untuk resource non-fetch seperti pdfjs.getDocument)
+function apiUrl(path) {
+  const sameOrigin = API_BASE && API_BASE.indexOf(location.hostname) !== -1;
+  return sameOrigin ? (path.startsWith("/api") ? path : `/api${path}`) : `${API_BASE}${path}`;
+}
+
 const API = {
   files: () => apiFetch("/files").then((r) => r.json()),
   tags: (id) => apiFetch(`/files/${id}/tags`).then((r) => r.json()),
@@ -57,6 +66,18 @@ const API = {
     apiFetch(`/scan?reExtract=${reExtract}`, { method: "POST" }).then((r) => r.json()),
   upload: (formData) =>
     apiFetch("/upload", { method: "POST", body: formData }).then((r) => r.json()),
+  getUploadUrl: (filename, contentType) =>
+    apiFetch("/upload-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename, contentType }),
+    }).then((r) => r.json()),
+  registerFile: (meta) =>
+    apiFetch("/register-file", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(meta),
+    }).then((r) => r.json()),
   getSettings: () => apiFetch("/settings").then((r) => r.json()),
   setSettings: (active_folder) =>
     apiFetch("/settings", {
@@ -333,7 +354,7 @@ async function openPdfViewer(file) {
 
   try {
     const pdfjs = await ensurePdfjs();
-    const loadingTask = pdfjs.getDocument(`${API_BASE}/files/${file.id}/pdf`);
+    const loadingTask = pdfjs.getDocument(apiUrl(`/files/${file.id}/pdf`));
     pdfDoc = await loadingTask.promise;
 
     // Load tags
@@ -636,8 +657,6 @@ $("uploadForm").addEventListener("submit", async (e) => {
     $("uploadStatus").className = "upload-status error";
     return;
   }
-  const fd = new FormData();
-  fd.append("pdf", file);
   const btn = $("btnSubmitUpload");
   const progress = $("uploadProgress");
   const bar = $("uploadProgressBar");
@@ -650,43 +669,49 @@ $("uploadForm").addEventListener("submit", async (e) => {
   status.textContent = "";
   status.className = "upload-status";
 
-  const xhr = new XMLHttpRequest();
-  xhr.upload.addEventListener("progress", (ev) => {
-    if (ev.lengthComputable) {
-      const pct = Math.round((ev.loaded / ev.total) * 100);
-      bar.style.width = pct + "%";
-    }
-  });
-  xhr.addEventListener("load", async () => {
+  try {
+    const upInfo = await API.getUploadUrl(file.name, file.type || "application/pdf");
+    if (upInfo.error) throw new Error(upInfo.error || "Gagal membuat upload URL");
+    const { url, key } = upInfo;
+
+    // Upload file directly to S3 using PUT so we can track progress
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.addEventListener("progress", (ev) => {
+        if (ev.lengthComputable) {
+          const pct = Math.round((ev.loaded / ev.total) * 100);
+          bar.style.width = pct + "%";
+        }
+      });
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error(`Upload ke S3 gagal: ${xhr.status} ${xhr.statusText}`));
+      });
+      xhr.addEventListener("error", () => reject(new Error("Gagal koneksi ke S3")));
+      xhr.open("PUT", url);
+      xhr.setRequestHeader("Content-Type", file.type || "application/pdf");
+      xhr.send(file);
+    });
+
+    // Register file in our DB
+    const reg = await API.registerFile({ original_name: file.name, key, file_size: file.size });
+    if (reg.error) throw new Error(reg.error || "Gagal register file");
+
     btn.disabled = false;
     btn.textContent = "Upload";
     progress.classList.add("hidden");
-    try {
-      const data = JSON.parse(xhr.responseText);
-      if (data.success) {
-        status.textContent = `✓ Berhasil upload: ${data.filename}`;
-        status.className = "upload-status success";
-        showToast(`Berhasil upload ${data.filename}`, "success");
-        await loadFiles();
-        setTimeout(closeUploadModal, 1200);
-      } else {
-        status.textContent = `✗ ${data.error || "Gagal upload"}`;
-        status.className = "upload-status error";
-      }
-    } catch (err) {
-      status.textContent = `✗ Respon tidak valid`;
-      status.className = "upload-status error";
-    }
-  });
-  xhr.addEventListener("error", () => {
+    status.textContent = `✓ Berhasil upload: ${reg.filename}`;
+    status.className = "upload-status success";
+    showToast(`Berhasil upload ${reg.filename}`, "success");
+    await loadFiles();
+    setTimeout(closeUploadModal, 1200);
+  } catch (err) {
     btn.disabled = false;
     btn.textContent = "Upload";
     progress.classList.add("hidden");
-    status.textContent = "✗ Gagal koneksi ke server";
+    status.textContent = `✗ ${err.message || "Gagal upload"}`;
     status.className = "upload-status error";
-  });
-  xhr.open("POST", `${API_BASE}/upload`);
-  xhr.send(fd);
+  }
 });
 
 // ===== Folder modal events =====
@@ -798,7 +823,7 @@ async function detectAppMode() {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 1500);
-    const r = await fetch(`${API_BASE}/settings`, { signal: ctrl.signal });
+    const r = await apiFetch("/settings", { signal: ctrl.signal });
     clearTimeout(t);
     if (!r.ok) return "offline";
     return "online";
