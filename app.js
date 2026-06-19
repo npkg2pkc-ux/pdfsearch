@@ -2,13 +2,17 @@
 // app.js  -  Frontend logic untuk PDF Tag Search (dengan PDF viewer)
 // =====================================================================
 
-// Backend Express (lihat server.js / config.js) selalu jalan di port 3000.
-// Pada Vercel (deploy static), API tidak tersedia — otomatis offline mode.
-// Pada localhost (running "node server.js"), fitur lengkap aktif.
-const API_BASE = "http://localhost:3000";
+// Backend base URL: use localhost:3000 for local dev, otherwise default to current origin.
+// If you host the Express backend on a separate server, set `API_BASE_OVERRIDE` below
+// or replace this with the production backend URL.
+const API_BASE_OVERRIDE = null; // e.g. "https://api.mydomain.com" — set to non-null to force
+const API_BASE = API_BASE_OVERRIDE
+  || (location.hostname === "localhost" || location.hostname === "127.0.0.1"
+    ? "http://localhost:3000"
+    : `${location.protocol}//${location.hostname}${location.port ? ":" + location.port : ""}`);
 
-// Detect apakah hostname adalah localhost → online mode, atau domain lain (Vercel) → offline
-const isOnlineHost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+// Detect whether we are likely running with a reachable backend on same origin/dev
+const isOnlineHost = API_BASE && (API_BASE.includes("localhost") || API_BASE.indexOf(location.hostname) !== -1);
 
 // pdfjsLib dimuat dari server lokal (node_modules/pdfjs-dist/build/)
 // sehingga viewer tidak bergantung pada CDN dan lebih andal.
@@ -18,9 +22,11 @@ async function ensurePdfjs() {
   // Coba load dari /pdfjs/ (public folder, Vercel-compatible)
   // Jika gagal, fallback ke API_BASE (Express)
   try {
-    pdfjsLib = await import("/pdfjs/pdf.min.mjs");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
+    // Prefer loading from same origin (should work on Vercel if pdfjs files are in public)
+    pdfjsLib = await import(`/pdfjs/pdf.min.mjs`);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdfjs/pdf.worker.min.mjs`;
   } catch {
+    // Fallback to API_BASE (useful for dev when pdfjs served by Express)
     pdfjsLib = await import(`${API_BASE}/pdfjs/pdf.min.mjs`);
     pdfjsLib.GlobalWorkerOptions.workerSrc = `${API_BASE}/pdfjs/pdf.worker.min.mjs`;
   }
@@ -31,7 +37,9 @@ async function ensurePdfjs() {
 async function apiFetch(path, options) {
   let res;
   try {
-    res = await fetch(`${API_BASE}${path}`, options);
+    // If API_BASE points to same origin, fetch relative path to avoid CORS issues.
+    const url = API_BASE && API_BASE.indexOf(location.hostname) !== -1 ? path : `${API_BASE}${path}`;
+    res = await fetch(url, options);
   } catch (err) {
     throw new Error(
       `Tidak dapat terhubung ke backend (${API_BASE}). ` +
@@ -794,7 +802,8 @@ async function detectAppMode() {
     clearTimeout(t);
     if (!r.ok) return "offline";
     return "online";
-  } catch {
+  } catch (err) {
+    console.warn("detectAppMode: backend ping failed", err && err.message);
     return "offline";
   }
 }

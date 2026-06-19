@@ -14,7 +14,15 @@ const { scanFolder } = require("./services/pdfScanner");
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
+app.use(
+  express.static(path.join(__dirname), {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) return res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      if (filePath.endsWith('.js')) return res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      if (filePath.endsWith('.css')) return res.setHeader('Content-Type', 'text/css; charset=utf-8');
+    },
+  })
+);
 
 // Serve PDF.js library locally from node_modules/pdfjs-dist/build/
 // This avoids CDN/CORS issues and makes the viewer work offline.
