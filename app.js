@@ -825,7 +825,16 @@ async function detectAppMode() {
     const t = setTimeout(() => ctrl.abort(), 1500);
     const r = await apiFetch("/settings", { signal: ctrl.signal });
     clearTimeout(t);
-    if (!r.ok) return "offline";
+    if (!r.ok) {
+      // Kalau backend merespon error konfigurasi (mis. DATABASE_URL not configured), beri petunjuk ke pengguna
+      try {
+        const body = await r.json();
+        if (body && body.error && body.error.includes("DATABASE_URL")) {
+          showToast("Server belum dikonfigurasi: setel DATABASE_URL di Vercel (lihat README_VERCEL_MIGRATION).", "error", 10000);
+        }
+      } catch (e) {}
+      return "offline";
+    }
     return "online";
   } catch (err) {
     console.warn("detectAppMode: backend ping failed", err && err.message);
